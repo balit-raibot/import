@@ -97,6 +97,11 @@ OBSERVATION_ABOUT = [
     Case("surrounding whitespace is trimmed",
          given=" country/USA ",
          expect="country/USA"),
+    Case("id that doesn't look like a reference is still one",
+         given="Earth",
+         expect="Earth",
+         bug="an id without '/' or ':' is written as a string, not a"
+         " reference"),
     Case("NA is Namibia, not a missing value",
          given="NA",
          expect="NA",
@@ -246,15 +251,14 @@ def test_collisions_of_every_file_are_summarized(caplog):
   two files shows that the counts were merged. b.run_dir, unlike b.run, does not
   cache runs, so the run always logs.
   """
+  # Earth is written as a plain value, not a reference (see
+  # OBSERVATION_ABOUT): samples name both forms.
+  rows_x = [b.obs_row("country/X", value=v) for v in ("1", "2")]
+  rows_y = [b.obs_row("Earth", value=v) for v in ("1", "2")]
   files = {
-      "provenance.mcf":
-          b.PROVENANCE_MCF,
-      "case_x.csv":
-          b.csv_file(b.obs_row("country/X", value="1"),
-                     b.obs_row("country/X", value="2")),
-      "case_y.csv":
-          b.csv_file(b.obs_row("country/Y", value="1"),
-                     b.obs_row("country/Y", value="2")),
+      "provenance.mcf": b.PROVENANCE_MCF,
+      "case_x.csv": b.csv_file(*rows_x),
+      "case_y.csv": b.csv_file(*rows_y),
   }
   with caplog.at_level(logging.WARNING):
     result = b.run_dir(files, b.obs_config(b.OBS_MAPPINGS))
@@ -267,7 +271,10 @@ def test_collisions_of_every_file_are_summarized(caplog):
       "  File 'case_y.csv': 1 collision(s)",
   ]
   samples = [line for line in details if line.startswith("    - @id=")]
-  assert len(samples) == 2, details
+  assert sorted(sample.split(" [", 1)[1] for sample in samples) == [
+      f"observationAbout='{place}', variable='Count_Person', date='2020',"
+      f" provenance='{b.PROVENANCE}']" for place in ("Earth", "country/X")
+  ], details
 
 
 def test_collisions_across_files_are_summarized(caplog):

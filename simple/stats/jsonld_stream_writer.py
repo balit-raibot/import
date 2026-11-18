@@ -213,6 +213,18 @@ def _build_observation_node(row: tuple) -> dict:
   return obs_obj
 
 
+def _observation_about(obs_obj: dict) -> str:
+  """The entity that observation node `obs_obj` is about, or "".
+
+  A reference ({"@id": "dcid:country/USA"}) or, for an id that doesn't look like
+  one (e.g. "Earth"), a plain value.
+  """
+  about = obs_obj.get("dcid:observationAbout", "")
+  if isinstance(about, dict):
+    return about["@id"].removeprefix("dcid:")
+  return str(about)
+
+
 def _observation_shard(chunk,
                        shard_index: int,
                        ns_map: dict[str, str],
@@ -224,9 +236,10 @@ def _observation_shard(chunk,
   for row in chunk:
     obs_obj = _build_observation_node(row)
     if track_hash_fn:
-      entity, variable, date, _, provenance, *_ = row
+      _, variable, date, _, provenance, *_ = row
       obs_hash = obs_obj["@id"].removeprefix("dcid:obs_")
-      chunk_hashes.append((obs_hash, entity, variable, date, provenance))
+      chunk_hashes.append(
+          (obs_hash, _observation_about(obs_obj), variable, date, provenance))
     graph_list.append(obs_obj)
 
   if track_hash_fn and chunk_hashes:
@@ -349,7 +362,7 @@ class JsonLdStreamWriter(GraphWriter):
     sees one file. See `stats.obs_id_collisions` for collisions between files.
     """
     file_key = collision_file_key(file_name)
-    for obs_hash, ent, var, dt, prov in chunk_items:
+    for obs_hash, about, var, dt, prov in chunk_items:
       hash_int = int(obs_hash[:16], 16)
       if hash_int not in self.obs_hash_set:
         self.obs_hash_set.add(hash_int)
@@ -357,7 +370,7 @@ class JsonLdStreamWriter(GraphWriter):
       self.obs_collision_count += 1
       self.file_collision_counts[file_key] += 1
       sample_info = (
-          f"@id='dcid:obs_{obs_hash}' [entity='{ent}', variable='{var}', date='{dt}', provenance='{prov}']"
+          f"@id='dcid:obs_{obs_hash}' [observationAbout='{about}', variable='{var}', date='{dt}', provenance='{prov}']"
       )
       if len(self.file_sample_collisions[file_key]) < MAX_SAMPLES_PER_FILE:
         self.file_sample_collisions[file_key].append(sample_info)
